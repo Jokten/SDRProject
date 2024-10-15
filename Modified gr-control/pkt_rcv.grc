@@ -311,7 +311,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [512, 280.0]
+    coordinate: [568, 240.0]
     rotation: 0
     state: enabled
 - name: digital_crc32_bb_0_0
@@ -331,7 +331,31 @@ blocks:
     bus_structure: null
     coordinate: [968, 524.0]
     rotation: 0
-    state: true
+    state: disabled
+- name: digital_crc_check_0
+  id: digital_crc_check
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    discard_crc: 'False'
+    final_xor: '0xFFFFFFFF'
+    initial_value: '0xFFFFFFFF'
+    input_reflected: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_bits: '32'
+    poly: '0x4C11DB7'
+    result_reflected: 'True'
+    skip_header_bytes: '0'
+    swap_endianness: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1288, 400.0]
+    rotation: 0
+    state: enabled
 - name: digital_diff_decoder_bb_0
   id: digital_diff_decoder_bb
   parameters:
@@ -426,7 +450,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1216, 424.0]
+    coordinate: [1032, 424.0]
     rotation: 0
     state: enabled
 - name: qtgui_const_sink_x_0
@@ -1249,7 +1273,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [416, 312.0]
+    coordinate: [544, 384.0]
     rotation: 0
     state: disabled
 - name: virtual_sink_0
@@ -1304,6 +1328,22 @@ blocks:
     coordinate: [120, 540.0]
     rotation: 0
     state: true
+- name: zeromq_pub_msg_sink_0
+  id: zeromq_pub_msg_sink
+  parameters:
+    address: '"tcp://127.0.0.1:5554"'
+    affinity: ''
+    alias: ''
+    bind: 'True'
+    comment: ''
+    timeout: '100'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1424, 248.0]
+    rotation: 0
+    state: enabled
 - name: zeromq_sub_source_0
   id: zeromq_sub_source
   parameters:
@@ -1331,6 +1371,7 @@ blocks:
 connections:
 - [analog_agc_xx_0, '0', digital_fll_band_edge_cc_0, '0']
 - [blocks_repack_bits_bb_1_0, '0', digital_crc32_bb_0_0, '0']
+- [blocks_repack_bits_bb_1_0, '0', pdu_tagged_stream_to_pdu_0, '0']
 - [blocks_throttle2_0, '0', analog_agc_xx_0, '0']
 - [blocks_uchar_to_float_0_0, '0', qtgui_time_sink_x_0_2, '0']
 - [blocks_uchar_to_float_0_0_0, '0', qtgui_time_sink_x_0_0, '0']
@@ -1341,13 +1382,15 @@ connections:
 - [digital_costas_loop_cc_0, '0', qtgui_const_sink_x_0, '0']
 - [digital_crc32_bb_0_0, '0', blocks_file_sink_0, '0']
 - [digital_crc32_bb_0_0, '0', pdu_tagged_stream_to_pdu_0, '0']
+- [digital_crc_check_0, ok, blocks_message_debug_0, print]
+- [digital_crc_check_0, ok, zeromq_pub_msg_sink_0, in]
 - [digital_diff_decoder_bb_0, '0', virtual_sink_0_0, '0']
 - [digital_fll_band_edge_cc_0, '0', qtgui_freq_sink_x_0, '0']
 - [digital_fll_band_edge_cc_0, '0', virtual_sink_0, '0']
 - [digital_map_bb_0, '0', blocks_uchar_to_float_0_0, '0']
 - [digital_map_bb_0, '0', digital_correlate_access_code_xx_ts_0, '0']
 - [digital_symbol_sync_xx_0, '0', digital_costas_loop_cc_0, '0']
-- [pdu_tagged_stream_to_pdu_0, pdus, blocks_message_debug_0, print]
+- [pdu_tagged_stream_to_pdu_0, pdus, digital_crc_check_0, in]
 - [rational_resampler_xxx_0, '0', blocks_throttle2_0, '0']
 - [uhd_usrp_source_0, '0', rational_resampler_xxx_0, '0']
 - [virtual_source_0, '0', digital_symbol_sync_xx_0, '0']

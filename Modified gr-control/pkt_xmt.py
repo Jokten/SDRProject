@@ -13,8 +13,6 @@
 from PyQt5 import Qt
 from gnuradio import qtgui
 from gnuradio import blocks
-import pmt
-from gnuradio import blocks, gr
 from gnuradio import digital
 from gnuradio import filter
 from gnuradio.filter import firdes
@@ -27,8 +25,7 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import gr, pdu
-from gnuradio import uhd
-import time
+from gnuradio import zeromq
 import pkt_xmt_epy_block_1 as epy_block_1  # embedded python block
 import pkt_xmt_epy_block_2 as epy_block_2  # embedded python block
 import sip
@@ -90,22 +87,8 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self.uhd_usrp_sink_0 = uhd.usrp_sink(
-            ",".join(("", '')),
-            uhd.stream_args(
-                cpu_format="fc32",
-                args='',
-                channels=list(range(0,1)),
-            ),
-            "",
-        )
-        self.uhd_usrp_sink_0.set_samp_rate(usrp_rate)
-        self.uhd_usrp_sink_0.set_time_unknown_pps(uhd.time_spec(0))
-
-        self.uhd_usrp_sink_0.set_center_freq(2.45*10**9, 0)
-        self.uhd_usrp_sink_0.set_antenna("TX/RX", 0)
-        self.uhd_usrp_sink_0.set_bandwidth((samp_rate/4), 0)
-        self.uhd_usrp_sink_0.set_gain(30, 0)
+        self.zeromq_sub_msg_source_0 = zeromq.sub_msg_source("tcp://127.0.0.1:5555", 100, False)
+        self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, 'tcp://127.0.0.1:49203', 100, False, (-1), '', True, True)
         self.qtgui_time_sink_x_0 = qtgui.time_sink_f(
             256, #size
             samp_rate, #samp_rate
@@ -219,20 +202,19 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
             truncate=False)
         self.digital_burst_shaper_xx_1 = digital.burst_shaper_ff(([]), 8, 8, False, "packet_len")
         self.blocks_uchar_to_float_0_0_0_0 = blocks.uchar_to_float()
+        self.blocks_throttle2_0_0 = blocks.throttle( gr.sizeof_gr_complex*1, usrp_rate, True, 0 if "auto" == "auto" else max( int(float(0.1) * usrp_rate) if "auto" == "time" else int(0.1), 1) )
         self.blocks_tagged_stream_mux_0 = blocks.tagged_stream_mux(gr.sizeof_char*1, "packet_len", 0)
         self.blocks_repack_bits_bb_0_0 = blocks.repack_bits_bb(8, 1, "frame_len", False, gr.GR_MSB_FIRST)
-        self.blocks_message_strobe_0 = blocks.message_strobe(pmt.cons(pmt.PMT_NIL, pmt.init_u8vector(5,[0x01,0x02,0x03, 0x04, 0x05])), 100)
-        self.blocks_message_debug_0 = blocks.message_debug(True, gr.log_levels.info)
 
 
         ##################################################
         # Connections
         ##################################################
-        self.msg_connect((self.blocks_message_strobe_0, 'strobe'), (self.blocks_message_debug_0, 'print'))
-        self.msg_connect((self.blocks_message_strobe_0, 'strobe'), (self.digital_crc_append_0, 'in'))
         self.msg_connect((self.digital_crc_append_0, 'out'), (self.pdu_pdu_to_tagged_stream_0, 'pdus'))
+        self.msg_connect((self.zeromq_sub_msg_source_0, 'out'), (self.digital_crc_append_0, 'in'))
         self.connect((self.blocks_repack_bits_bb_0_0, 0), (self.blocks_uchar_to_float_0_0_0_0, 0))
         self.connect((self.blocks_tagged_stream_mux_0, 0), (self.epy_block_2, 0))
+        self.connect((self.blocks_throttle2_0_0, 0), (self.zeromq_pub_sink_0, 0))
         self.connect((self.blocks_uchar_to_float_0_0_0_0, 0), (self.digital_burst_shaper_xx_1, 0))
         self.connect((self.digital_burst_shaper_xx_1, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.digital_constellation_modulator_0, 0), (self.fft_filter_xxx_0_0_0, 0))
@@ -241,8 +223,8 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
         self.connect((self.epy_block_1, 0), (self.digital_constellation_modulator_0, 0))
         self.connect((self.epy_block_2, 0), (self.epy_block_1, 0))
         self.connect((self.fft_filter_xxx_0_0_0, 0), (self.mmse_resampler_xx_0, 0))
+        self.connect((self.mmse_resampler_xx_0, 0), (self.blocks_throttle2_0_0, 0))
         self.connect((self.mmse_resampler_xx_0, 0), (self.qtgui_freq_sink_x_1, 0))
-        self.connect((self.mmse_resampler_xx_0, 0), (self.uhd_usrp_sink_0, 0))
         self.connect((self.pdu_pdu_to_tagged_stream_0, 0), (self.blocks_tagged_stream_mux_0, 1))
         self.connect((self.pdu_pdu_to_tagged_stream_0, 0), (self.digital_protocol_formatter_bb_0, 0))
 
@@ -268,9 +250,8 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
         self.samp_rate = samp_rate
         self.set_low_pass_filter_taps(firdes.low_pass(1.0, self.samp_rate, 20000, 2000, window.WIN_HAMMING, 6.76))
         self.mmse_resampler_xx_0.set_resamp_ratio((1.0/((self.usrp_rate/self.samp_rate))))
-        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
-        self.uhd_usrp_sink_0.set_bandwidth((self.samp_rate/4), 0)
         self.qtgui_freq_sink_x_1.set_frequency_range(0, self.samp_rate)
+        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
 
     def get_access_key(self):
         return self.access_key
@@ -284,8 +265,8 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
 
     def set_usrp_rate(self, usrp_rate):
         self.usrp_rate = usrp_rate
+        self.blocks_throttle2_0_0.set_sample_rate(self.usrp_rate)
         self.mmse_resampler_xx_0.set_resamp_ratio((1.0/((self.usrp_rate/self.samp_rate))))
-        self.uhd_usrp_sink_0.set_samp_rate(self.usrp_rate)
 
     def get_sps(self):
         return self.sps

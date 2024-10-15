@@ -184,9 +184,9 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [288, 312.0]
+    coordinate: [320, 368.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: blocks_message_strobe_0
   id: blocks_message_strobe
   parameters:
@@ -203,7 +203,7 @@ blocks:
     bus_structure: null
     coordinate: [16, 168.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: blocks_repack_bits_bb_0_0
   id: blocks_repack_bits_bb
   parameters:
@@ -264,7 +264,7 @@ blocks:
     bus_structure: null
     coordinate: [952, 568.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_uchar_to_float_0_0_0_0
   id: blocks_uchar_to_float
   parameters:
@@ -1199,7 +1199,7 @@ blocks:
     bus_structure: null
     coordinate: [1200, 720.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: virtual_sink_0_0
   id: virtual_sink
   parameters:
@@ -1247,7 +1247,25 @@ blocks:
     bus_structure: null
     coordinate: [1320, 544.0]
     rotation: 0
-    state: disabled
+    state: enabled
+- name: zeromq_sub_msg_source_0
+  id: zeromq_sub_msg_source
+  parameters:
+    address: '"tcp://127.0.0.1:5555"'
+    affinity: ''
+    alias: ''
+    bind: 'False'
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    timeout: '100'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [40, 336.0]
+    rotation: 0
+    state: enabled
 
 connections:
 - [blocks_message_strobe_0, strobe, blocks_message_debug_0, print]
@@ -1278,6 +1296,8 @@ connections:
 - [pdu_pdu_to_tagged_stream_0, '0', digital_protocol_formatter_bb_0, '0']
 - [virtual_source_0, '0', blocks_repack_bits_bb_0_0, '0']
 - [virtual_source_0, '0', digital_constellation_modulator_0, '0']
+- [zeromq_sub_msg_source_0, out, blocks_message_debug_0, print]
+- [zeromq_sub_msg_source_0, out, digital_crc_append_0, in]
 
 metadata:
   file_format: 1
