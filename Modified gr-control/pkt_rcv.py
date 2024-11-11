@@ -12,13 +12,12 @@
 
 from PyQt5 import Qt
 from gnuradio import qtgui
-from gnuradio import analog
 from gnuradio import blocks
 from gnuradio import blocks, gr
 from gnuradio import digital
 from gnuradio import filter
-from gnuradio.filter import firdes
 from gnuradio import gr
+from gnuradio.filter import firdes
 from gnuradio.fft import window
 import sys
 import signal
@@ -27,7 +26,8 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import gr, pdu
-from gnuradio import zeromq
+from gnuradio import uhd
+import time
 import sip
 
 
@@ -68,26 +68,35 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
         # Variables
         ##################################################
         self.usrp_rate = usrp_rate = 768000
-        self.thresh = thresh = 1
-        self.sps = sps = 4
-        self.samp_rate = samp_rate = 48000
-        self.phase_bw = phase_bw = 0.0628
-        self.excess_bw = excess_bw = 0.35
         self.bpsk = bpsk = digital.constellation_bpsk().base()
         self.bpsk.set_npwr(1.0)
+        self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0 = digital.adaptive_algorithm_cma( bpsk, .0001, 2).base()
+        self.thresh = thresh = 18
+        self.sps = sps = 4
+        self.samp_rate = samp_rate = usrp_rate
+        self.phase_bw = phase_bw = 0.0628
+        self.excess_bw = excess_bw = 0.35
         self.MTU = MTU = 1500
 
         ##################################################
         # Blocks
         ##################################################
 
-        self.zeromq_sub_source_0 = zeromq.sub_source(gr.sizeof_gr_complex, 1, 'tcp://127.0.0.1:49201', 100, False, (-1), '', False)
-        self.zeromq_pub_msg_sink_0 = zeromq.pub_msg_sink("tcp://127.0.0.1:5554", 100, True)
-        self.rational_resampler_xxx_0 = filter.rational_resampler_ccc(
-                interpolation=1,
-                decimation=((int)(usrp_rate/samp_rate)),
-                taps=[],
-                fractional_bw=0)
+        self.uhd_usrp_source_0 = uhd.usrp_source(
+            ",".join(("", '')),
+            uhd.stream_args(
+                cpu_format="fc32",
+                args='',
+                channels=list(range(0,1)),
+            ),
+        )
+        self.uhd_usrp_source_0.set_samp_rate(usrp_rate)
+        # No synchronization enforced.
+
+        self.uhd_usrp_source_0.set_center_freq(2.45*10**9, 0)
+        self.uhd_usrp_source_0.set_antenna("TX/RX", 0)
+        self.uhd_usrp_source_0.set_bandwidth((usrp_rate/sps), 0)
+        self.uhd_usrp_source_0.set_gain(20, 0)
         self.qtgui_time_sink_x_0_2 = qtgui.time_sink_f(
             256, #size
             samp_rate, #samp_rate
@@ -238,6 +247,47 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setRowStretch(r, 1)
         for c in range(0, 2):
             self.top_grid_layout.setColumnStretch(c, 1)
+        self.qtgui_const_sink_x_2 = qtgui.const_sink_c(
+            1024, #size
+            "", #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_const_sink_x_2.set_update_time(0.10)
+        self.qtgui_const_sink_x_2.set_y_axis((-2), 2)
+        self.qtgui_const_sink_x_2.set_x_axis((-2), 2)
+        self.qtgui_const_sink_x_2.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, "")
+        self.qtgui_const_sink_x_2.enable_autoscale(False)
+        self.qtgui_const_sink_x_2.enable_grid(False)
+        self.qtgui_const_sink_x_2.enable_axis_labels(True)
+
+
+        labels = ['', '', '', '', '',
+            '', '', '', '', '']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ["blue", "red", "green", "black", "cyan",
+            "magenta", "yellow", "dark red", "dark green", "dark blue"]
+        styles = [0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0]
+        markers = [0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_const_sink_x_2.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_const_sink_x_2.set_line_label(i, labels[i])
+            self.qtgui_const_sink_x_2.set_line_width(i, widths[i])
+            self.qtgui_const_sink_x_2.set_line_color(i, colors[i])
+            self.qtgui_const_sink_x_2.set_line_style(i, styles[i])
+            self.qtgui_const_sink_x_2.set_line_marker(i, markers[i])
+            self.qtgui_const_sink_x_2.set_line_alpha(i, alphas[i])
+
+        self._qtgui_const_sink_x_2_win = sip.wrapinstance(self.qtgui_const_sink_x_2.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_const_sink_x_2_win)
         self.qtgui_const_sink_x_0 = qtgui.const_sink_c(
             1024, #size
             "", #name
@@ -285,7 +335,7 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
             self.top_grid_layout.setColumnStretch(c, 1)
         self.pdu_tagged_stream_to_pdu_0 = pdu.tagged_stream_to_pdu(gr.types.byte_t, 'packet_len')
         self.digital_symbol_sync_xx_0 = digital.symbol_sync_cc(
-            digital.TED_MUELLER_AND_MULLER,
+            digital.TED_GARDNER,
             sps,
             phase_bw,
             1.0,
@@ -297,7 +347,7 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
             128,
             [])
         self.digital_map_bb_0 = digital.map_bb([0,1])
-        self.digital_fll_band_edge_cc_0 = digital.fll_band_edge_cc(sps, excess_bw, 44, phase_bw)
+        self.digital_linear_equalizer_0 = digital.linear_equalizer(15, sps, variable_adaptive_algorithm_0, True, [ ], 'corr_est')
         self.digital_diff_decoder_bb_0 = digital.diff_decoder_bb(2, digital.DIFF_DIFFERENTIAL)
         self.digital_crc_check_0 = digital.crc_check(32, 0x4C11DB7, 0xFFFFFFFF, 0xFFFFFFFF, True, True, False, False, 0)
         self.digital_costas_loop_cc_0 = digital.costas_loop_cc(phase_bw, 2, False)
@@ -306,36 +356,31 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
         self.digital_constellation_decoder_cb_0 = digital.constellation_decoder_cb(bpsk)
         self.blocks_uchar_to_float_0_0_0 = blocks.uchar_to_float()
         self.blocks_uchar_to_float_0_0 = blocks.uchar_to_float()
-        self.blocks_throttle2_0 = blocks.throttle( gr.sizeof_gr_complex*1, samp_rate, True, 0 if "auto" == "auto" else max( int(float(0.1) * samp_rate) if "auto" == "time" else int(0.1), 1) )
         self.blocks_repack_bits_bb_1_0 = blocks.repack_bits_bb(1, 8, "packet_len", False, gr.GR_MSB_FIRST)
         self.blocks_message_debug_0 = blocks.message_debug(True, gr.log_levels.info)
-        self.analog_agc_xx_0 = analog.agc_cc((1e-4), 1.0, 1.0, 2.0)
 
 
         ##################################################
         # Connections
         ##################################################
         self.msg_connect((self.digital_crc_check_0, 'ok'), (self.blocks_message_debug_0, 'print'))
-        self.msg_connect((self.digital_crc_check_0, 'ok'), (self.zeromq_pub_msg_sink_0, 'in'))
         self.msg_connect((self.pdu_tagged_stream_to_pdu_0, 'pdus'), (self.digital_crc_check_0, 'in'))
-        self.connect((self.analog_agc_xx_0, 0), (self.digital_fll_band_edge_cc_0, 0))
         self.connect((self.blocks_repack_bits_bb_1_0, 0), (self.pdu_tagged_stream_to_pdu_0, 0))
-        self.connect((self.blocks_throttle2_0, 0), (self.analog_agc_xx_0, 0))
         self.connect((self.blocks_uchar_to_float_0_0, 0), (self.qtgui_time_sink_x_0_2, 0))
         self.connect((self.blocks_uchar_to_float_0_0_0, 0), (self.qtgui_time_sink_x_0_0, 0))
         self.connect((self.digital_constellation_decoder_cb_0, 0), (self.digital_diff_decoder_bb_0, 0))
         self.connect((self.digital_correlate_access_code_xx_ts_0, 0), (self.blocks_repack_bits_bb_1_0, 0))
         self.connect((self.digital_correlate_access_code_xx_ts_0, 0), (self.blocks_uchar_to_float_0_0_0, 0))
-        self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_constellation_decoder_cb_0, 0))
-        self.connect((self.digital_costas_loop_cc_0, 0), (self.qtgui_const_sink_x_0, 0))
+        self.connect((self.digital_costas_loop_cc_0, 0), (self.digital_symbol_sync_xx_0, 0))
+        self.connect((self.digital_costas_loop_cc_0, 0), (self.qtgui_const_sink_x_2, 0))
         self.connect((self.digital_diff_decoder_bb_0, 0), (self.digital_map_bb_0, 0))
-        self.connect((self.digital_fll_band_edge_cc_0, 0), (self.digital_symbol_sync_xx_0, 0))
-        self.connect((self.digital_fll_band_edge_cc_0, 0), (self.qtgui_freq_sink_x_0, 0))
+        self.connect((self.digital_linear_equalizer_0, 0), (self.digital_constellation_decoder_cb_0, 0))
+        self.connect((self.digital_linear_equalizer_0, 0), (self.qtgui_const_sink_x_0, 0))
+        self.connect((self.digital_linear_equalizer_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.digital_map_bb_0, 0), (self.blocks_uchar_to_float_0_0, 0))
         self.connect((self.digital_map_bb_0, 0), (self.digital_correlate_access_code_xx_ts_0, 0))
-        self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_costas_loop_cc_0, 0))
-        self.connect((self.rational_resampler_xxx_0, 0), (self.blocks_throttle2_0, 0))
-        self.connect((self.zeromq_sub_source_0, 0), (self.rational_resampler_xxx_0, 0))
+        self.connect((self.digital_symbol_sync_xx_0, 0), (self.digital_linear_equalizer_0, 0))
+        self.connect((self.uhd_usrp_source_0, 0), (self.digital_costas_loop_cc_0, 0))
 
 
     def closeEvent(self, event):
@@ -351,6 +396,22 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
 
     def set_usrp_rate(self, usrp_rate):
         self.usrp_rate = usrp_rate
+        self.set_samp_rate(self.usrp_rate)
+        self.uhd_usrp_source_0.set_samp_rate(self.usrp_rate)
+        self.uhd_usrp_source_0.set_bandwidth((self.usrp_rate/self.sps), 0)
+
+    def get_bpsk(self):
+        return self.bpsk
+
+    def set_bpsk(self, bpsk):
+        self.bpsk = bpsk
+        self.digital_constellation_decoder_cb_0.set_constellation(self.bpsk)
+
+    def get_variable_adaptive_algorithm_0(self):
+        return self.variable_adaptive_algorithm_0
+
+    def set_variable_adaptive_algorithm_0(self, variable_adaptive_algorithm_0):
+        self.variable_adaptive_algorithm_0 = variable_adaptive_algorithm_0
 
     def get_thresh(self):
         return self.thresh
@@ -364,13 +425,13 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
     def set_sps(self, sps):
         self.sps = sps
         self.digital_symbol_sync_xx_0.set_sps(self.sps)
+        self.uhd_usrp_source_0.set_bandwidth((self.usrp_rate/self.sps), 0)
 
     def get_samp_rate(self):
         return self.samp_rate
 
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
-        self.blocks_throttle2_0.set_sample_rate(self.samp_rate)
         self.qtgui_freq_sink_x_0.set_frequency_range(0, self.samp_rate)
         self.qtgui_time_sink_x_0_0.set_samp_rate(self.samp_rate)
         self.qtgui_time_sink_x_0_2.set_samp_rate(self.samp_rate)
@@ -381,7 +442,6 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
     def set_phase_bw(self, phase_bw):
         self.phase_bw = phase_bw
         self.digital_costas_loop_cc_0.set_loop_bandwidth(self.phase_bw)
-        self.digital_fll_band_edge_cc_0.set_loop_bandwidth(self.phase_bw)
         self.digital_symbol_sync_xx_0.set_loop_bandwidth(self.phase_bw)
 
     def get_excess_bw(self):
@@ -389,13 +449,6 @@ class pkt_rcv(gr.top_block, Qt.QWidget):
 
     def set_excess_bw(self, excess_bw):
         self.excess_bw = excess_bw
-
-    def get_bpsk(self):
-        return self.bpsk
-
-    def set_bpsk(self, bpsk):
-        self.bpsk = bpsk
-        self.digital_constellation_decoder_cb_0.set_constellation(self.bpsk)
 
     def get_MTU(self):
         return self.MTU

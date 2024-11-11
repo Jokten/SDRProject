@@ -13,6 +13,7 @@
 from PyQt5 import Qt
 from gnuradio import qtgui
 from gnuradio import blocks
+import pmt
 from gnuradio import digital
 from gnuradio import filter
 from gnuradio.filter import firdes
@@ -24,10 +25,8 @@ from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
-from gnuradio import gr, pdu
-from gnuradio import zeromq
-import pkt_xmt_epy_block_1 as epy_block_1  # embedded python block
-import pkt_xmt_epy_block_2 as epy_block_2  # embedded python block
+from gnuradio import uhd
+import time
 import sip
 
 
@@ -74,7 +73,7 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
         ##################################################
         self.samp_rate = samp_rate = 48000
         self.access_key = access_key = '11100001010110101110100010010011'
-        self.usrp_rate = usrp_rate = 768000
+        self.usrp_rate = usrp_rate = 48000*16
         self.sps = sps = 4
         self.rs_ratio = rs_ratio = 1.040
         self.low_pass_filter_taps = low_pass_filter_taps = firdes.low_pass(1.0, samp_rate, 20000,2000, window.WIN_HAMMING, 6.76)
@@ -87,60 +86,27 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self.zeromq_sub_msg_source_0 = zeromq.sub_msg_source("tcp://127.0.0.1:5555", 100, False)
-        self.zeromq_pub_sink_0 = zeromq.pub_sink(gr.sizeof_gr_complex, 1, 'tcp://127.0.0.1:49203', 100, False, (-1), '', True, True)
-        self.qtgui_time_sink_x_0 = qtgui.time_sink_f(
-            256, #size
-            samp_rate, #samp_rate
-            'Transmit data', #name
-            1, #number of inputs
-            None # parent
+        self.uhd_usrp_sink_0 = uhd.usrp_sink(
+            ",".join(("", '')),
+            uhd.stream_args(
+                cpu_format="fc32",
+                args='',
+                channels=list(range(0,1)),
+            ),
+            "",
         )
-        self.qtgui_time_sink_x_0.set_update_time(0.10)
-        self.qtgui_time_sink_x_0.set_y_axis(-0.1, 1.1)
+        self.uhd_usrp_sink_0.set_samp_rate(usrp_rate)
+        self.uhd_usrp_sink_0.set_time_unknown_pps(uhd.time_spec(0))
 
-        self.qtgui_time_sink_x_0.set_y_label('Amplitude', "")
-
-        self.qtgui_time_sink_x_0.enable_tags(True)
-        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.1, 0.0, 0, "packet_len")
-        self.qtgui_time_sink_x_0.enable_autoscale(False)
-        self.qtgui_time_sink_x_0.enable_grid(False)
-        self.qtgui_time_sink_x_0.enable_axis_labels(True)
-        self.qtgui_time_sink_x_0.enable_control_panel(False)
-        self.qtgui_time_sink_x_0.enable_stem_plot(False)
-
-
-        labels = ['', '', '', '', '',
-            '', '', '', '', '']
-        widths = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        colors = ['blue', 'red', 'green', 'black', 'cyan',
-            'magenta', 'yellow', 'dark red', 'dark green', 'dark blue']
-        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0]
-        styles = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        markers = [-1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1]
-
-
-        for i in range(1):
-            if len(labels[i]) == 0:
-                self.qtgui_time_sink_x_0.set_line_label(i, "Data {0}".format(i))
-            else:
-                self.qtgui_time_sink_x_0.set_line_label(i, labels[i])
-            self.qtgui_time_sink_x_0.set_line_width(i, widths[i])
-            self.qtgui_time_sink_x_0.set_line_color(i, colors[i])
-            self.qtgui_time_sink_x_0.set_line_style(i, styles[i])
-            self.qtgui_time_sink_x_0.set_line_marker(i, markers[i])
-            self.qtgui_time_sink_x_0.set_line_alpha(i, alphas[i])
-
-        self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
-        self.top_grid_layout.addWidget(self._qtgui_time_sink_x_0_win, 1, 0, 1, 3)
-        for r in range(1, 2):
-            self.top_grid_layout.setRowStretch(r, 1)
-        for c in range(0, 3):
-            self.top_grid_layout.setColumnStretch(c, 1)
+        self.uhd_usrp_sink_0.set_center_freq(2.45*10**9, 0)
+        self.uhd_usrp_sink_0.set_antenna("TX/RX", 0)
+        self.uhd_usrp_sink_0.set_bandwidth((usrp_rate/sps), 0)
+        self.uhd_usrp_sink_0.set_gain(20, 0)
+        self.rational_resampler_xxx_0 = filter.rational_resampler_ccc(
+                interpolation=16,
+                decimation=1,
+                taps=[],
+                fractional_bw=0)
         self.qtgui_freq_sink_x_1 = qtgui.freq_sink_c(
             1024, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
@@ -183,14 +149,49 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
 
         self._qtgui_freq_sink_x_1_win = sip.wrapinstance(self.qtgui_freq_sink_x_1.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_freq_sink_x_1_win)
-        self.pdu_pdu_to_tagged_stream_0 = pdu.pdu_to_tagged_stream(gr.types.byte_t, 'packet_len')
-        self.mmse_resampler_xx_0 = filter.mmse_resampler_cc(0, (1.0/((usrp_rate/samp_rate))))
+        self.qtgui_const_sink_x_0 = qtgui.const_sink_c(
+            1024, #size
+            "", #name
+            1, #number of inputs
+            None # parent
+        )
+        self.qtgui_const_sink_x_0.set_update_time(0.10)
+        self.qtgui_const_sink_x_0.set_y_axis((-2), 2)
+        self.qtgui_const_sink_x_0.set_x_axis((-2), 2)
+        self.qtgui_const_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, "")
+        self.qtgui_const_sink_x_0.enable_autoscale(False)
+        self.qtgui_const_sink_x_0.enable_grid(False)
+        self.qtgui_const_sink_x_0.enable_axis_labels(True)
+
+
+        labels = ['', '', '', '', '',
+            '', '', '', '', '']
+        widths = [1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1]
+        colors = ["blue", "red", "green", "black", "cyan",
+            "magenta", "yellow", "dark red", "dark green", "dark blue"]
+        styles = [0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0]
+        markers = [0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0]
+        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, 1.0, 1.0]
+
+        for i in range(1):
+            if len(labels[i]) == 0:
+                self.qtgui_const_sink_x_0.set_line_label(i, "Data {0}".format(i))
+            else:
+                self.qtgui_const_sink_x_0.set_line_label(i, labels[i])
+            self.qtgui_const_sink_x_0.set_line_width(i, widths[i])
+            self.qtgui_const_sink_x_0.set_line_color(i, colors[i])
+            self.qtgui_const_sink_x_0.set_line_style(i, styles[i])
+            self.qtgui_const_sink_x_0.set_line_marker(i, markers[i])
+            self.qtgui_const_sink_x_0.set_line_alpha(i, alphas[i])
+
+        self._qtgui_const_sink_x_0_win = sip.wrapinstance(self.qtgui_const_sink_x_0.qwidget(), Qt.QWidget)
+        self.top_layout.addWidget(self._qtgui_const_sink_x_0_win)
         self.fft_filter_xxx_0_0_0 = filter.fft_filter_ccc(1, low_pass_filter_taps, 1)
         self.fft_filter_xxx_0_0_0.declare_sample_delay(0)
-        self.epy_block_2 = epy_block_2.add_packet_start_tag(packet_len_tag_key="packet_len")
-        self.epy_block_1 = epy_block_1.add_preamble(preamble=[0xAA, 0x55, 0xAA, 0x55])
-        self.digital_protocol_formatter_bb_0 = digital.protocol_formatter_bb(hdr_format, "packet_len")
-        self.digital_crc_append_0 = digital.crc_append(32, 0x4C11DB7, 0xFFFFFFFF, 0xFFFFFFFF, True, True, False, 0)
         self.digital_constellation_modulator_0 = digital.generic_mod(
             constellation=bpsk,
             differential=True,
@@ -200,33 +201,22 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
             verbose=False,
             log=False,
             truncate=False)
-        self.digital_burst_shaper_xx_1 = digital.burst_shaper_ff(([]), 8, 8, False, "packet_len")
-        self.blocks_uchar_to_float_0_0_0_0 = blocks.uchar_to_float()
-        self.blocks_throttle2_0_0 = blocks.throttle( gr.sizeof_gr_complex*1, usrp_rate, True, 0 if "auto" == "auto" else max( int(float(0.1) * usrp_rate) if "auto" == "time" else int(0.1), 1) )
-        self.blocks_tagged_stream_mux_0 = blocks.tagged_stream_mux(gr.sizeof_char*1, "packet_len", 0)
-        self.blocks_repack_bits_bb_0_0 = blocks.repack_bits_bb(8, 1, "frame_len", False, gr.GR_MSB_FIRST)
+        self.blocks_tag_debug_0 = blocks.tag_debug(gr.sizeof_char*1, '', "packet_len")
+        self.blocks_tag_debug_0.set_display(True)
+        self.blocks_file_source_0 = blocks.file_source(gr.sizeof_char*1, '/home/jonte/Documents/gnurd/gr-logo.png', True, 0, 0)
+        self.blocks_file_source_0.set_begin_tag(pmt.PMT_NIL)
 
 
         ##################################################
         # Connections
         ##################################################
-        self.msg_connect((self.digital_crc_append_0, 'out'), (self.pdu_pdu_to_tagged_stream_0, 'pdus'))
-        self.msg_connect((self.zeromq_sub_msg_source_0, 'out'), (self.digital_crc_append_0, 'in'))
-        self.connect((self.blocks_repack_bits_bb_0_0, 0), (self.blocks_uchar_to_float_0_0_0_0, 0))
-        self.connect((self.blocks_tagged_stream_mux_0, 0), (self.epy_block_2, 0))
-        self.connect((self.blocks_throttle2_0_0, 0), (self.zeromq_pub_sink_0, 0))
-        self.connect((self.blocks_uchar_to_float_0_0_0_0, 0), (self.digital_burst_shaper_xx_1, 0))
-        self.connect((self.digital_burst_shaper_xx_1, 0), (self.qtgui_time_sink_x_0, 0))
+        self.connect((self.blocks_file_source_0, 0), (self.blocks_tag_debug_0, 0))
+        self.connect((self.blocks_file_source_0, 0), (self.digital_constellation_modulator_0, 0))
         self.connect((self.digital_constellation_modulator_0, 0), (self.fft_filter_xxx_0_0_0, 0))
-        self.connect((self.digital_protocol_formatter_bb_0, 0), (self.blocks_tagged_stream_mux_0, 0))
-        self.connect((self.epy_block_1, 0), (self.blocks_repack_bits_bb_0_0, 0))
-        self.connect((self.epy_block_1, 0), (self.digital_constellation_modulator_0, 0))
-        self.connect((self.epy_block_2, 0), (self.epy_block_1, 0))
-        self.connect((self.fft_filter_xxx_0_0_0, 0), (self.mmse_resampler_xx_0, 0))
-        self.connect((self.mmse_resampler_xx_0, 0), (self.blocks_throttle2_0_0, 0))
-        self.connect((self.mmse_resampler_xx_0, 0), (self.qtgui_freq_sink_x_1, 0))
-        self.connect((self.pdu_pdu_to_tagged_stream_0, 0), (self.blocks_tagged_stream_mux_0, 1))
-        self.connect((self.pdu_pdu_to_tagged_stream_0, 0), (self.digital_protocol_formatter_bb_0, 0))
+        self.connect((self.digital_constellation_modulator_0, 0), (self.qtgui_const_sink_x_0, 0))
+        self.connect((self.fft_filter_xxx_0_0_0, 0), (self.rational_resampler_xxx_0, 0))
+        self.connect((self.rational_resampler_xxx_0, 0), (self.qtgui_freq_sink_x_1, 0))
+        self.connect((self.rational_resampler_xxx_0, 0), (self.uhd_usrp_sink_0, 0))
 
 
     def closeEvent(self, event):
@@ -249,9 +239,7 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
     def set_samp_rate(self, samp_rate):
         self.samp_rate = samp_rate
         self.set_low_pass_filter_taps(firdes.low_pass(1.0, self.samp_rate, 20000, 2000, window.WIN_HAMMING, 6.76))
-        self.mmse_resampler_xx_0.set_resamp_ratio((1.0/((self.usrp_rate/self.samp_rate))))
         self.qtgui_freq_sink_x_1.set_frequency_range(0, self.samp_rate)
-        self.qtgui_time_sink_x_0.set_samp_rate(self.samp_rate)
 
     def get_access_key(self):
         return self.access_key
@@ -265,14 +253,15 @@ class pkt_xmt(gr.top_block, Qt.QWidget):
 
     def set_usrp_rate(self, usrp_rate):
         self.usrp_rate = usrp_rate
-        self.blocks_throttle2_0_0.set_sample_rate(self.usrp_rate)
-        self.mmse_resampler_xx_0.set_resamp_ratio((1.0/((self.usrp_rate/self.samp_rate))))
+        self.uhd_usrp_sink_0.set_samp_rate(self.usrp_rate)
+        self.uhd_usrp_sink_0.set_bandwidth((self.usrp_rate/self.sps), 0)
 
     def get_sps(self):
         return self.sps
 
     def set_sps(self, sps):
         self.sps = sps
+        self.uhd_usrp_sink_0.set_bandwidth((self.usrp_rate/self.sps), 0)
 
     def get_rs_ratio(self):
         return self.rs_ratio
